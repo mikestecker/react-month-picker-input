@@ -1,35 +1,41 @@
 // @flow
-import React from 'react';
-import PropTypes from 'prop-types'
+import React, { useEffect, useRef } from 'react';
 
 interface IProps {
-  onOutsideClick: (e: any) => any,
-  className?: string,
-  children: JSX.Element
-};
+  onOutsideClick: (e: MouseEvent) => void;
+  className?: string;
+  children: JSX.Element;
+}
 
-const OutsideClickWrapper = ({ onOutsideClick, className = '', children }) => {
-  let wrapperContainer;
+const OutsideClickWrapper: React.FC<IProps> = ({
+  onOutsideClick,
+  className = '',
+  children,
+}) => {
+  const wrapperContainer = useRef<HTMLDivElement | null>(null);
 
-  const handleOutsideClick = (e) => {
-    if (wrapperContainer && !wrapperContainer.contains(e.target)) {
-      onOutsideClick(e);
-    }
-  };
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        wrapperContainer.current &&
+        !wrapperContainer.current.contains(e.target as Node)
+      ) {
+        onOutsideClick(e);
+      }
+    };
 
-  const wrapperMounted = (container) => {
-    wrapperContainer = container;
+    window.addEventListener('click', handleOutsideClick, false);
 
-    if (wrapperContainer) {
-      window.addEventListener('click', handleOutsideClick, false);
-    } else {
+    return () => {
       window.removeEventListener('click', handleOutsideClick, false);
-    }
-  };
+    };
+  }, [onOutsideClick]); // Ensures the effect updates if `onOutsideClick` changes.
 
   return (
-    <div ref={wrapperMounted} className={className}>{children}</div>
+    <div ref={wrapperContainer} className={className}>
+      {children}
+    </div>
   );
-}
+};
 
 export default OutsideClickWrapper;
