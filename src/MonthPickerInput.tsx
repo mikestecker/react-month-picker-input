@@ -1,205 +1,134 @@
-import React, { Component } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import InputMask from 'react-input-mask';
-
 import MonthCalendar from './calendar';
-import { valuesToMask, valuesFromMask, validationOfDate } from './utils';
-
-import { II18n, DEFAULT_I18N as I18n_DEF } from './i18n';
+import {
+  valuesToMask,
+  valuesFromMask,
+  validationOfDate,
+} from './utils';
 import Translator from './Translator';
 
 import './styles/index.css';
 
-type OnChange = (maskedValue: string, year: number, month: number) => any;
-
-export const DEFAULT_I18N = I18n_DEF;
-
-export enum Mode {
-  NORMAL = 'normal',
-  READ_ONLY = 'readOnly',
-  CALENDAR_ONLY = 'calendarOnly'
+export interface IProps {
+  year?: number;
+  month?: number;
+  inputProps?: {
+    name?: string;
+    id?: string;
+    className?: string;
+    size?: string | number;
+    maxLength?: string | number;
+    required?: boolean;
+  };
+  maxYear?: number;
+  startYear?: number;
+  minDate?: [number, number];
+  maxDate?: [number, number];
+  lang?: string;
+  onChange?: (
+    maskedValue: string,
+    year: number,
+    month: number
+  ) => void;
+  closeOnSelect?: boolean;
+  i18n?: Partial<any>;
+  mode?: 'normal' | 'readOnly' | 'calendarOnly';
 }
 
-export interface IProps {
-  year?: number,
-  month?: number,
-  inputProps?: {
-    name?: string,
-    id?: string,
-    className?: string,
-    size?: string|number,
-    maxLength?: string|number,
-    required?: boolean
-  },
-  maxYear?: number,
-  startYear?: number,
-  minDate?: [number, number],
-  maxDate?: [number, number],
-  lang?: string,
-  onChange?: OnChange,
-  closeOnSelect?: boolean,
-  i18n?: Partial<II18n>,
-  mode?: Mode
-};
+const MonthPickerInput: React.FC<IProps> = ({
+  year,
+  month,
+  inputProps = {},
+  maxYear,
+  startYear,
+  minDate,
+  maxDate,
+  lang,
+  onChange,
+  closeOnSelect = false,
+  i18n,
+  mode = 'normal',
+}) => {
+  const [inputValue, setInputValue] = useState<string>('');
+  const [selectedYear, setSelectedYear] = useState<
+    number | undefined
+  >(year);
+  const [selectedMonth, setSelectedMonth] = useState<
+    number | undefined
+  >(month);
+  const [showCalendar, setShowCalendar] = useState<boolean>(false);
 
-export interface IState {
-  year: void|number,
-  month: void|number,
-  inputValue: string,
-  showCalendar: boolean,
-};
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputMask = new Translator(lang, i18n)
+    .dateFormat()
+    .replace(/M|Y/g, '9');
 
-class MonthPickerInput extends Component<IProps, IState> {
-  wrapper: HTMLDivElement;
-  input: { input: Element };
-  private t: Translator;
-  private inputMask: string;
+  useEffect(() => {
+    setInputValue(
+      valuesToMask(month, year, new Translator(lang, i18n))
+    );
+  }, [month, year, lang, i18n]);
 
-  public static defaultProps: Partial<IProps> = {
-    inputProps: {},
-    closeOnSelect: false,
-    mode: Mode.NORMAL
+  const handleCalendarChange = (year: number, month: number) => {
+    const [minDateRange, maxDateRange] = validationOfDate(
+      minDate,
+      maxDate,
+      maxYear
+    );
+    const [finalMonth, finalYear] = valuesFromMask(
+      valuesToMask(month, year, new Translator(lang, i18n)),
+      new Translator(lang, i18n),
+      minDateRange,
+      maxDateRange
+    );
+
+    setInputValue(
+      valuesToMask(finalMonth, finalYear, new Translator(lang, i18n))
+    );
+    setSelectedYear(finalYear);
+    setSelectedMonth(finalMonth);
+    setShowCalendar(!closeOnSelect);
+
+    if (onChange) onChange(inputValue, finalYear, finalMonth);
   };
 
-  constructor(props) {
-    super(props);
-    const { year, month, maxYear, startYear} = this.props;
-    let inputValue = '';
-
-    this.t = new Translator(this.props.lang, this.props.i18n);
-    this.inputMask = this.t.dateFormat().replace(/M|Y/g, '9');
-
-    this.state = {
-      year,
-      month,
-      inputValue: this.valuesToMask(month, year),
-      showCalendar: false,
-    }
+  const inputPropsWithHandlers = {
+    ...inputProps,
+    mask: inputMask,
+    placeholder: new Translator(lang, i18n).dateFormat(),
+    type: 'text',
+    onFocus: () => setShowCalendar(true),
+    onBlur: (e: FocusEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) {
+        setShowCalendar(false);
+      }
+    },
+    value: inputValue,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      setInputValue(e.target.value);
+    },
   };
 
-  componentWillReceiveProps(nextProps: IProps): void {
-    const update: Partial<IState> = {};
-
-    if (nextProps.year !== this.props.year) { update.year = nextProps.year }
-    if (nextProps.month !== this.props.month) { update.month = nextProps.month }
-
-    if (Object.keys(update).length) {
-      const month = typeof update.month == 'undefined' ? this.state.month : update.month;
-      const year = update.year || this.state.year;
-      update.inputValue = this.valuesToMask(month, year);
-      this.setState(update as IState);
-    }
-  };
-
-  inputReadonly = (): boolean => {
-    return this.props.mode === Mode.READ_ONLY || this.props.mode === Mode.CALENDAR_ONLY;
-  }
-
-  valuesToMask = (month: number|void, year: number|void): string => {
-    if (typeof year == 'number' && typeof month == 'number') {
-      return valuesToMask(month, year, this.t);
-    } else return '';
-  }
-
-  onCalendarChange = (year: number, month: number): void => {
-    const [minDate, maxDate] = validationOfDate(this.props.minDate, this.props.maxDate, this.props.maxYear);
-    [month, year] = valuesFromMask(this.valuesToMask(month, year), this.t, minDate, maxDate);
-    const inputValue = this.valuesToMask(month, year);
-    this.setState({
-      inputValue,
-      year,
-      month,
-      showCalendar: !this.props.closeOnSelect
-    });
-    this.onChange(inputValue, year, month);
-  };
-
-  onInputChange = (e: { target: { value: string }}): void => {
-    if (this.inputReadonly()) return;
-
-    const mask = e.target.value;
-
-    if (mask.length && mask.indexOf('_') === -1) {
-      const [minDate, maxDate] = validationOfDate(this.props.minDate, this.props.maxDate, this.props.maxYear);
-      const [month, year] = valuesFromMask(mask, this.t, minDate, maxDate);
-      const inputValue = this.valuesToMask(month, year);
-      this.setState({ year, month, inputValue });
-      this.onChange(inputValue, year, month);
-    } else this.setState({ inputValue: mask });
-  };
-
-  onChange = (inputValue, year, month) => {
-    if (this.props.onChange) {
-      this.props.onChange(inputValue, year, month);
-    }
-  };
-
-  onInputBlur = (e): void => {
-    if (!this.wrapper.contains(e.target)) {
-      this.setState({ showCalendar: false })
-    }
-  };
-
-  onInputFocus = (e): void => {
-    if (this.wrapper.contains(e.target)) {
-      this.setState({ showCalendar: true });
-    }
-  };
-
-  onCalendarOutsideClick = (e): void => {
-    this.setState({ showCalendar: this.input.input == e.target });
-  };
-
-  calendar = (): JSX.Element => {
-    const { startYear, maxYear, minDate, maxDate } = this.props;
-    const { year, month } = this.state;
-
-    return (
-      <div style={{ position: 'relative' }}>
+  return (
+    <div ref={wrapperRef} className="react-month-picker">
+      <InputMask {...inputPropsWithHandlers} />
+      {showCalendar && (
         <MonthCalendar
-          year={year}
-          month={month}
+          year={selectedYear}
+          month={selectedMonth}
           maxYear={maxYear}
           startYear={startYear}
           minDate={minDate}
           maxDate={maxDate}
-          onChange={this.onCalendarChange}
-          onOutsideClick={this.onCalendarOutsideClick}
-          translator={this.t}
-          readOnly={this.props.mode === Mode.READ_ONLY}
+          onChange={handleCalendarChange}
+          onOutsideClick={() => setShowCalendar(false)}
+          translator={new Translator(lang, i18n)}
+          readOnly={mode === 'readOnly'}
         />
-      </div>
-    )
-  };
-
-  inputProps = (): object => {
-    return Object.assign({}, {
-      ref: input => { if(input) this.input = input; },
-      mask: this.inputMask,
-      placeholder: this.t.dateFormat(),
-      type: 'text',
-      onBlur: this.onInputBlur,
-      onFocus: this.onInputFocus,
-      onChange: this.onInputChange,
-      className: `month-input ${this.inputReadonly() ? 'readonly' : ''}`
-    }, this.props.inputProps)
-  };
-
-  render() {
-    const { inputValue, showCalendar } = this.state;
-
-    return (
-      <div ref={wrap => { if(wrap) this.wrapper = wrap; }} className="react-month-picker">
-        <InputMask
-          value={inputValue}
-          {...this.inputProps()}
-        />
-
-        { showCalendar && this.calendar() }
-      </div>
-    );
-  };
+      )}
+    </div>
+  );
 };
-
-export { DateFormat, MonthFormat } from './i18n';
 
 export default MonthPickerInput;
